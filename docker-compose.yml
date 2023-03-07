@@ -1,0 +1,82 @@
+version: '3.1'
+
+volumes:
+  mysql_data:
+
+networks:
+  proxy:
+    external: true
+  backend:
+    external: true
+  crowdsec:
+    external: true
+
+services:
+
+  wordpress:
+    image: wordpress
+    container_name: ${CONTAINER_NAME}
+    depends_on:
+      - ${WP_DB_HOST}
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: ${WP_DB_HOST}
+      WORDPRESS_DB_USER: ${WP_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PW}
+      WORDPRESS_DB_NAME: ${WP_DB_NAME}
+    volumes:
+      - ./${WP_VERZEICHNIS_APP}:/var/www/html
+      - ./wordpress.ini:/usr/local/etc/php/conf.d/wordpress.ini
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wordpress.entrypoints=https"
+      - "traefik.http.routers.wordpress.rule=Host(`${DOMAIN_1}`,`${DOMAIN_2}`)"
+      - "traefik.http.routers.wordpress.middlewares=default@file"
+      - "traefik.http.routers.wordpress.tls=true"
+      - "traefik.http.routers.wordpress.tls.certresolver=http"
+      - "traefik.http.routers.wordpress.service=wordpress"
+      - "traefik.http.services.wordpress.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+
+    networks:
+      proxy:
+        ipv4_address: ${WP_PROXY_IPV4}
+        ipv6_address: ${WP_PROXY_IPV6}
+      backend:
+        ipv4_address: ${WP_BACKEND_IPV4}
+      crowdsec:
+        ipv4_address: ${WP_CROWDSEC_IPV4}
+
+  dbwordpress:
+    image: mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PW}
+      MARIADB_DATABASE: ${WP_DB_NAME}
+      MARIADB_USER: ${WP_DB_USER}
+      MARIADB_PASSWORD: ${WP_DB_PW}
+    volumes:
+      - ./database:/var/lib/mysql
+    networks:
+      backend:
+        ipv4_address: ${WPDB_BACKEND_IPV4}
+    ports:
+      - 3308:3306
+
+  wpredis:
+    image: redis:alpine
+    container_name: wordpress-redis
+    restart: unless-stopped
+    networks:
+      backend:
+        ipv4_address: ${REDIS_BACKEND_IPV4}
+
+  # adminer:
+  #   image: adminer
+  #   restart: always
+  #   depends_on:
+  #     - db
+  #   ports:
+  #     - 9080:8080
+  #   networks:
+  #     - nginx_proxy_backend
